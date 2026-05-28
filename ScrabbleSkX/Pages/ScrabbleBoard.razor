@@ -1,0 +1,786 @@
+﻿@page "/"
+@inject ILogger<ScrabbleBoard> Logger
+@inject HttpClient Http
+@using ScrabbleSkX;
+@using ScrabbleSkX.Pages;
+@using ScrabbleSkX.Data;
+@using ScrabbleSkX.Players;
+@using ScrabbleSkX.Solver;
+@using ScrabbleSkX.Words;
+@using ScrabbleSkX.Stats;
+@using ScrabbleSkX.Log;
+@using Microsoft.AspNetCore.Components;
+@using System.Reflection;
+@using System.IO;
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<PageTitle>Scrabble</PageTitle>
+
+
+@if (gameLog?.messages != null)
+{
+    <div class="message">
+        @foreach (string s in gameLog.messages)
+        {
+            <GameLogger logmessage=@s></GameLogger>
+        }
+    </div>
+}
+
+<div class="game" id="game">
+    <div class="game-element-container">
+        <div class="board">
+            @if (boardManager?.BoardTiles != null)
+            {
+                @for (int x = 0; x < BoardManager.BOARD_WIDTH; x++)
+                {
+                    <div class="tile-row">
+                        @for (int y = 0; y < BoardManager.BOARD_HEIGHT; y++)
+                        {
+                            BoardTile boardTile = boardManager.BoardTiles[x, y];
+                            <BoardSpace BoardTile=boardTile playerManager=playerManager OnClickCallback="@BoardTileClick"></BoardSpace>
+                        }
+                    </div>
+                }
+            }
+            else
+            {
+                <div>Loading board...</div>
+            }
+
+            <p class="float-left mt-4">Počet zostávajúcich písmen:@(tileBag != null ? tileBag.LetterCountRemaining().ToString() : "0")</p>
+
+            @if (SwapIsClicked)
+            {
+                <p class="float-right">Vyber písmená na výmenu"</p>
+            }
+        </div>
+    </div>
+
+    <div class="grid-element-container">
+        <div class="player-tiles">
+            <div class="tile-row">
+                @if (playerManager?.CurrentPlayer?.Tiles != null)
+                {
+                    @for (int x = 0; x < RackManager.RACK_WIDTH; x++)
+                    {
+                        RackTile rackTile = playerManager.CurrentPlayer.Tiles[x];
+                        <RackSpace RackTile=rackTile playerManager=playerManager OnClickCallback="@RackTileClick"></RackSpace>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="buttons mt-4 mb-2">
+        <button class="@BtnColor" @onclick=Play>Play @PlayMessage</button>
+        <button @onclick=Pass>Pass</button>
+        <button @onclick=Swap>Swap</button>
+        <button @onclick=Hint>Hint</button>
+        <button @onclick=Valid>Valid</button>
+        <button @onclick=InValid>InValid</button>
+        <button @onclick=NewGame>NewGame</button>
+        <!--
+        <button @onclick=Exit>Exit</button>
+        <button @onclick=Test>Test</button>
+        -->
+
+    </div>
+    <div>
+        @if (tileBag != null)
+        {
+            <label>Joker:</label>
+            <select @bind="tileBag.JokerBag">
+                @if (tileBag.AbecedaSK != null)
+                {
+                    @foreach (char pismeno in tileBag.AbecedaSK)
+                    {
+                        <option value="@pismeno">@pismeno</option>
+                    }
+                }
+            </select>
+        }
+        else
+        {
+            <div>Joker: Loading...</div>
+        }
+    </div>
+</div
+
+
+
+
+@code {
+
+
+    public PlayerManager playerManager { get; set; }
+    public RackManager rackManager { get; set; }
+    public BoardManager boardManager { get; set; }
+    public WordValidator wordValidator { get; set; }
+    public StatManager statManager { get; set; }
+    public BagTile tileBag { get; set; }
+    public GameLog gameLog { get; set; }
+
+    public Data.Trie trie { get; set; }
+    public Solver.Dictionary solverDictionary { get; set; }
+
+
+    public Solver.Board solverBoard { get; set; }
+
+    public Solver.Bag solverBag { get; set; }
+    public Solver.Rack solverRack { get; set; }
+
+
+
+    public List<string> solutionHints = new List<string>();
+    public Solution[] Solutions;
+    public Solution[] Warnings;
+    public Solution[] Moves;
+
+    public const int BOARD_WIDTH = 15;
+    public const int BOARD_HEIGHT = 15;
+    public const int TILE_SIZE = 48;
+    public const int RACK_TILES = 7;
+
+    public bool GamePlaying { get; set; }
+    public bool SwapIsClicked { get; set; }
+    public string PlayMessage { get; set; }
+    public string BtnColor { get; set; }
+
+    public string initialBoard { get; set; } = string.Empty;
+    public string boardIni { get; set; } = string.Empty;
+
+    public List<BoardTile> lastTilesInPlay = new List<BoardTile>();
+
+
+    protected override async Task OnInitializedAsync()
+    {
+
+        int count = 0;
+        //Logger.LogWarning("Vstup z OnInitializedAsync");
+        gameLog = new GameLog();
+
+        //
+        //string skIni = await FileServices.ReadFileAsync("SK/SK1.ini");
+        //solverBag = new Solver.Bag(skIni);
+        // Solver.Bag publikovala iba staticku funkciu GetLetterValues
+        // v triede Solver.Board je nahradená triedou Solver.BagTiles 
+        //
+
+        Static.toIntSet();
+        trie = new Data.Trie();
+        var content = await ReadFileAsync(fileName: @"SK\dictionary\SK_2to5.txt");
+
+
+        string[] words = content.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (string word in words)
+        {
+            trie.Insert(word);
+            count++;
+        }
+
+        solverRack = new Solver.Rack();
+
+
+        solverDictionary = new Solver.Dictionary(trie.root, trie.Count);
+       
+        GamePlaying = true;
+
+        SwapIsClicked = false;
+        PlayMessage = string.Empty;
+
+        statManager = new StatManager();
+
+        tileBag = new BagTile();
+        rackManager = new RackManager(tileBag);
+
+        playerManager = new PlayerManager(rackManager);
+        playerManager.SetupPlayers();
+
+        initialBoard = await ReadFileAsync(fileName: "SK/initial_board.txt");
+        boardManager = new BoardManager(tileBag, statManager, playerManager);
+        boardManager.SetupTiles(initialBoard);
+
+        boardIni = await ReadFileAsync(fileName: "SK/board.ini");
+        solverBoard = new Solver.Board(solverDictionary, boardIni);
+
+        wordValidator = new WordValidator(tileBag, playerManager, boardManager, solverDictionary);
+
+        // Logger.LogWarning("Vystup z OnInitializedAsync");
+    }
+
+    static async Task<string> ReadStreamAsync(string filePath)
+    {
+        string text = string.Empty;
+
+        Stream resourceStream = Assembly.GetExecutingAssembly().GetManifestResourceStream(filePath);
+        using (StreamReader sr = new StreamReader(resourceStream))
+        {
+            text = await sr.ReadToEndAsync();
+        }
+        return text;
+    }
+
+    private async Task<string> ReadFileAsync(string fileName)
+    {
+        try
+        {
+            var content = await Http.GetStringAsync(fileName);
+            return content;
+        }
+        catch (Exception ex)
+        {
+            return $"Error reading file {fileName}: {ex.Message}";
+        }
+    }
+
+    private void ReRender()
+    {
+        StateHasChanged();
+    }
+
+    private void Valid()
+    {
+        wordValidator.Valid();
+    }
+    private void InValid()
+    {
+        Solution solution = Solutions[0];
+        UndoSolution(solution);
+        wordValidator.InValid(solution.s);
+        PlayerTwoSolution();
+        playerManager.SwapCurrentPlayer();
+    }
+
+    private void NewGame()
+    {
+        GamePlaying = true;
+        SwapIsClicked = false;
+        PlayMessage = string.Empty;
+
+        statManager = new StatManager();
+
+        tileBag = new BagTile();
+        rackManager = new RackManager(tileBag);
+
+        playerManager = new PlayerManager(rackManager);
+        playerManager.SetupPlayers();
+
+       
+        boardManager = new BoardManager(tileBag, statManager, playerManager);
+        boardManager.SetupTiles(initialBoard);
+
+        solverBoard = new Solver.Board(solverDictionary, boardIni);
+
+        wordValidator = new WordValidator(tileBag, playerManager, boardManager, solverDictionary);
+        gameLog = new GameLog();
+
+    }
+
+    private void Exit()
+    {
+        wordValidator.SaveInValidWords();
+        //streamLog.Close();
+    }
+
+    private void Swap()
+    {
+        if (!GamePlaying) return;
+
+        SwapIsClicked = false;
+        var tiles = playerManager.CurrentPlayer.Tiles.Where(c => c.LetterSelected).ToList();
+        if (tiles.Count == 0)
+        {
+            SwapIsClicked = true;
+            gameLog.messages.Push("Vyber písmená na výmenu");
+            return;
+        }
+
+        if (tiles.Count > tileBag.LetterCountRemaining())
+        {
+            gameLog.messages.Push("Môžeš výmeniť iba " + tileBag.LetterCountRemaining().ToString());
+            return;
+        }
+        tiles.ForEach(t =>
+        {
+            tileBag.GiveLetter(t.Letter[0]);
+            t.ClearDisplay();
+        });
+        ////streamLog.WriteLine(" Hrač si vymenil" + tiles.Count.ToString() + " písmen");
+        rackManager.FillRack(playerManager.CurrentPlayer.Tiles);
+        statManager.Swaps += 1;
+        statManager.ConsecutivePasses = 0;
+        playerManager.SwapCurrentPlayer();
+        PlayerTwoSolution();
+        playerManager.SwapCurrentPlayer();
+
+    }
+    private void Pass()
+    {
+        if (!GamePlaying) return;
+        SwapIsClicked = false;
+
+        statManager.Passes += 1;
+        statManager.ConsecutivePasses += 1;
+        if (statManager.ConsecutivePasses >= 4) GameOver();
+        string msg = "H1 vynechal svoj ťah";
+        gameLog.messages.Push(msg);
+        ////streamLog.WriteLine(msg);
+
+        playerManager.SwapCurrentPlayer();
+        PlayerTwoSolution();
+        playerManager.SwapCurrentPlayer();
+    }
+    private void Hint()
+    {
+        if (!GamePlaying) return;
+        Napoveda();
+    }
+    private void Test()
+    {
+        if (!GamePlaying) return;
+        PlayerTwoSolution();
+        playerManager.SwapCurrentPlayer();
+        PlayerTwoSolution();
+        playerManager.SwapCurrentPlayer();
+    }
+
+    private void Play()
+    {
+
+        if (!GamePlaying) return;
+        SwapIsClicked = false;
+
+         string msg = string.Empty;
+        msg = "H1 tiles =";
+        foreach (RackTile t in playerManager.CurrentPlayer.Tiles)
+        {
+            msg += t.Text;
+        }
+         msg = "Počet zostávajúcich písmen" + tileBag.LetterCountRemaining().ToString();
+
+        var tilesPlayed = playerManager.CurrentPlayer.Tiles.Where(r => string.IsNullOrEmpty(r.Text)).Count();
+        if (tilesPlayed == 0)
+        {
+            return;
+        }
+        var checkTilePositions = boardManager.ValidateTilePositions();
+        var moveResult = wordValidator.ValidateAllWordsInPlay();
+        if (!checkTilePositions)
+            gameLog.messages.Push("Slovo je zle umiestnené, vráť písmená do zásobníka a skús znova");
+        else if (!moveResult.Valid)
+            gameLog.messages.Push("Slovo nie je v slovníku, vráť písmená do zásobníka a skús znova");
+        else
+        {
+            boardManager.ResetTilesInPlay();
+
+            //LogRack(playerManager.CurrentPlayer.Tiles);
+
+            rackManager.FillRack(playerManager.CurrentPlayer.Tiles);
+
+            //LogRack(playerManager.CurrentPlayer.Tiles);
+
+
+            msg = "Počet zostávajúcich písmen" + tileBag.LetterCountRemaining().ToString();
+ 
+
+
+            statManager.Moves += 1;
+            statManager.ConsecutivePasses = 0;
+
+            if (tilesPlayed == 7)
+                moveResult.TotalScore += 50;
+            playerManager.CurrentPlayer.Score += moveResult.TotalScore;
+
+
+            moveResult.Words.ForEach(m => playerManager.PlayedWords.Add(m));
+            foreach (Word w in moveResult.Words)
+            {
+                if (tilesPlayed == 7 && w.Text.Length >= 7)
+                    w.Score += 50;
+            }
+
+            msg = playerManager.CurrentPlayer.Name + ": ";
+            moveResult.Words.ForEach(m => msg += $"{m.Text} {m.Score} ");
+            msg += "skóre: " + playerManager.CurrentPlayer.Score;
+
+            gameLog.Log(msg);
+            //streamLog.WriteLine(msg);
+
+            BtnColor = String.Empty;
+            PlayMessage = String.Empty;
+
+            if (rackManager.IsRackEmpty(playerManager.CurrentPlayer.Tiles))
+            {
+                GameOver();
+                return;
+            }
+            playerManager.SwapCurrentPlayer();
+
+            PlayerTwoSolution();
+            if (rackManager.IsRackEmpty(playerManager.CurrentPlayer.Tiles))
+            {
+                GameOver();
+                return;
+            }
+            playerManager.SwapCurrentPlayer();
+
+        }
+
+        StateHasChanged();
+
+        // Solutions = solverBoard.findMoves(solverRack);
+    }
+
+    /// <summary>
+    ///
+    /// </summary>
+    private void PlayerTwoSolution()
+    {
+
+        if (!GamePlaying) return;
+        string msg = string.Empty;
+
+        msg = "H2 tiles =";
+        foreach (RackTile t in playerManager.CurrentPlayer.Tiles)
+        {
+            msg += t.Text;
+        }
+        //streamLog.WriteLine(msg);
+        msg = "Počet zostávajúcich písmen" + tileBag.LetterCountRemaining().ToString();
+        //streamLog.WriteLine(msg);
+
+        //solverBag.importTileBag(tileBag.LettersRemaining());
+
+        List<char> charList = new List<char>();
+        foreach (RackTile rackTile in playerManager.CurrentPlayer.Tiles)
+        {
+            if (!String.IsNullOrEmpty(rackTile.Text))
+            {
+                charList.Add(rackTile.Text[0]);
+            }
+        }
+
+        solverRack = new Rack(charList);
+
+
+        int xLoc, yLoc;
+        for (int x = 1; x <= BOARD_WIDTH; x++)
+        {
+            for (int y = 1; y <= BOARD_HEIGHT; y++)
+            {
+                xLoc = x - 1;
+                yLoc = y - 1;
+
+                // if (TileManager.Tiles[xLoc, yLoc].TileInPlay && TileManager.Tiles[xLoc, yLoc].Text != String.Empty)
+                if (boardManager.BoardTiles[xLoc, yLoc].Text != String.Empty)
+                {
+                    char c = char.Parse(boardManager.BoardTiles[xLoc, yLoc].Text);
+                    c = char.ToLower(c);
+                    int? wrth = boardManager.BoardTiles[xLoc, yLoc].LetterValue;
+
+                    Letter letter = new Letter(c, (int)wrth);
+                    solverBoard[xLoc, yLoc] = letter;
+
+                }
+            }
+        }
+
+        solverBoard.maxL = 7;
+
+
+        // gameLog = new GameLog();
+
+        // progressBarDictionary.Value = 0;
+        // progressBarDictionary.Visible = true;
+
+        //Solutions
+        Solutions = solverBoard.findMoves(solverRack);
+        if (Solutions.Length == 0)
+        {
+            statManager.Passes += 1;
+            statManager.ConsecutivePasses += 1;
+            if (statManager.ConsecutivePasses >= 4)
+            {
+                GameOver();
+                return;
+            }
+            msg = "H2 vynechal svoj ťah";
+            gameLog.messages.Push(msg);
+            return;
+        }
+
+
+        int i0 = 0;
+        while (wordValidator.CheckInvalid(Solutions[i0].s))
+        {
+            i0++;
+        }
+
+        Solution solution = Solutions[i0];
+
+        string seqSolution = new string(solution.seq);
+
+
+        string msg1 = "s=" + solution.s + " seq=" + seqSolution + " w=" + solution.w.ToString() + " dir=" + solution.dir.ToString() + solution.x.ToString() + ";" + solution.y.ToString();
+        //streamLog.WriteLine(msg1);
+
+        // Place in on board
+        int i = solution.x;
+        int j = solution.y;
+        lastTilesInPlay.Clear();
+
+        foreach (char character in solution.seq)
+        {
+            if (solution.dir == 'H')
+                while (boardManager.BoardTiles[i, j].Letter != string.Empty) j++;
+            else if (solution.dir == 'V')
+                while (boardManager.BoardTiles[i, j].Letter != string.Empty) i++;
+
+            int wrth = WordScorer.LetterValue(char.ToUpper(character));
+            boardManager.BoardTiles[i, j].Letter = char.ToUpper(character).ToString();
+
+            char letter = character;
+            if (character == '#')
+            {
+                letter = solution.s[(i - solution.x) + j - solution.y];
+                boardManager.BoardTiles[i, j].Joker = true;
+            }
+            else
+                boardManager.BoardTiles[i, j].Joker = false;
+            boardManager.BoardTiles[i, j].Text = char.ToUpper(letter).ToString();
+            boardManager.BoardTiles[i, j].LetterValue = wrth;
+            boardManager.BoardTiles[i, j].TileInPlay = true;
+            boardManager.BoardTiles[i, j].MatejPlayed = true;
+            lastTilesInPlay.Add(boardManager.BoardTiles[i, j]);
+        }
+
+        var checkTilePositions = boardManager.ValidateTilePositions();
+        var moveResult = wordValidator.ValidateAllWordsInPlay();
+        if (!checkTilePositions)
+            gameLog.messages.Push("Slovo je zle umiestnené, vráť písmená do zásobníka a skús znova");
+        else if (!moveResult.Valid)
+            gameLog.messages.Push("Slovo nie je v slovníku, vráť písmená do zásobníka a skús znova");
+        else
+        {
+            boardManager.ResetTilesInPlay();
+
+            rackManager.ClearRack(playerManager.CurrentPlayer.Tiles, seqSolution.ToUpper());
+
+            //LogRack(playerManager.CurrentPlayer.Tiles);
+            rackManager.FillRack(playerManager.CurrentPlayer.Tiles);
+           // LogRack(playerManager.CurrentPlayer.Tiles);
+ 
+            msg = "Počet zostávajúcich písmen" + tileBag.LetterCountRemaining().ToString();
+ 
+            statManager.Moves += 1;
+            statManager.ConsecutivePasses = 0;
+
+            if (solution.seq.Length == 7)
+                moveResult.TotalScore += 50;
+            playerManager.CurrentPlayer.Score += moveResult.TotalScore;
+
+            moveResult.Words.ForEach(m => playerManager.PlayedWords.Add(m));
+            foreach (Word w in moveResult.Words)
+                if (solution.seq.Length == 7 && w.Text.Length >= 7)
+                    w.Score += 50;
+
+            msg = playerManager.CurrentPlayer.Name + ": ";
+            moveResult.Words.ForEach(m => msg += $"{m.Text} {m.Score} ");
+            msg += "skóre: " + playerManager.CurrentPlayer.Score + " w=" + solution.w.ToString();
+
+            gameLog.Log(msg);
+        }
+    }
+    private void Napoveda()
+    {
+
+        if (!GamePlaying) return;
+        string msg = string.Empty;
+
+        msg = "H2 tiles =";
+        foreach (RackTile t in playerManager.CurrentPlayer.Tiles)
+        {
+            msg += t.Text;
+        }
+        //streamLog.WriteLine(msg);
+        msg = "Počet zostávajúcich písmen" + tileBag.LetterCountRemaining().ToString();
+        //streamLog.WriteLine(msg);
+
+        // solverBag.importTileBag(tileBag.LettersRemaining());
+
+        List<char> charList = new List<char>();
+        foreach (RackTile rackTile in playerManager.CurrentPlayer.Tiles)
+        {
+            if (!String.IsNullOrEmpty(rackTile.Text))
+            {
+                charList.Add(rackTile.Text[0]);
+            }
+        }
+
+        solverRack = new Rack(charList);
+
+
+        int xLoc, yLoc;
+        for (int x = 1; x <= BOARD_WIDTH; x++)
+        {
+            for (int y = 1; y <= BOARD_HEIGHT; y++)
+            {
+                xLoc = x - 1;
+                yLoc = y - 1;
+
+                // if (TileManager.Tiles[xLoc, yLoc].TileInPlay && TileManager.Tiles[xLoc, yLoc].Text != String.Empty)
+                if (boardManager.BoardTiles[xLoc, yLoc].Text != String.Empty)
+                {
+                    char c = char.Parse(boardManager.BoardTiles[xLoc, yLoc].Text);
+                    c = char.ToLower(c);
+                    int? wrth = boardManager.BoardTiles[xLoc, yLoc].LetterValue;
+
+                    Letter letter = new Letter(c, (int)wrth);
+                    solverBoard[xLoc, yLoc] = letter;
+
+                }
+            }
+        }
+
+        solverBoard.maxL = 7;
+
+        //Solutions
+        Solutions = solverBoard.findMoves(solverRack);
+        if (Solutions.Length == 0)
+        {
+            return;
+        }
+
+
+
+        Solution solution = Solutions[0];
+
+        string seqSolution = new string(solution.seq);
+
+
+        string msg1 = "NÁPOVEDA s=" + solution.s + " seq=" + seqSolution + " w=" + solution.w.ToString() + " dir=" + solution.dir.ToString() + solution.x.ToString() + ";" + solution.y.ToString();
+        gameLog.messages.Push(msg1);
+
+
+
+    }
+    private string SolutionText(Solution solution)
+    {
+        string s = solution.dir + " ";
+
+        string a = solution.w.ToString();
+        while (a.Length < 4) a = " " + a;
+        s += a;
+
+        if (Array.IndexOf(solution.seq, '#') >= 0) s += "*";
+        else s += " ";
+        s += " ";
+
+        s += solution.s;
+        return s;
+    }
+
+    public void GameOver()
+    {
+        GamePlaying = false;
+        string msg = "HRA SKONČILA";
+        //streamLog.WriteLine(msg);
+        gameLog.Log(msg);
+
+        msg = "Písmená v zásobníku " + playerManager.CurrentPlayer.Name + ":";
+        playerManager.CurrentPlayer.Tiles.ForEach(t => msg += $"{t.Text}");
+        gameLog.Log(msg);
+
+        foreach (RackTile t in playerManager.CurrentPlayer.Tiles)
+        {
+            if (!String.IsNullOrEmpty(t.Text))
+                playerManager.CurrentPlayer.Score -= WordScorer.LetterValue(Char.Parse(t.Text.Substring(0, 1)));
+        }
+        msg = playerManager.CurrentPlayer.Name + " Výsledné skóre=" + playerManager.CurrentPlayer.Score.ToString();
+        gameLog.Log(msg);
+        //streamLog.WriteLine(msg);
+
+        playerManager.SwapCurrentPlayer();
+        msg = "Písmená v zásobníku " + playerManager.CurrentPlayer.Name + ":";
+        playerManager.CurrentPlayer.Tiles.ForEach(t => msg += $"{t.Text}");
+        gameLog.Log(msg);
+
+        foreach (RackTile t in playerManager.CurrentPlayer.Tiles)
+        {
+            if (!String.IsNullOrEmpty(t.Text))
+                playerManager.CurrentPlayer.Score -= WordScorer.LetterValue(Char.Parse(t.Text.Substring(0, 1)));
+        }
+        msg = playerManager.CurrentPlayer.Name + " Výsledné skóre=" + playerManager.CurrentPlayer.Score.ToString();
+        gameLog.Log(msg);
+        //streamLog.WriteLine(msg);
+
+        msg = string.Empty;
+        int lettersCount = 0;
+
+        for (int x = 0; x <= BOARD_WIDTH - 1; x++)
+        {
+            msg = string.Empty;
+            for (int y = 0; y <= BOARD_HEIGHT - 1; y++)
+            {
+                if (boardManager.BoardTiles[x, y].Text != String.Empty)
+                {
+                    msg += boardManager.BoardTiles[x, y].Text;
+                    lettersCount++;
+                }
+                else msg += "+";
+            }
+            //streamLog.WriteLine(msg);
+        }
+        msg = "Počet vyložených písmen" + lettersCount.ToString();
+        //streamLog.WriteLine(msg);
+
+        //streamLog.Close();
+        // fileStream.Close();
+    }
+
+    private void BoardTileClick(BoardTile boardTile)
+    {
+        var moveresult = wordValidator.ValidateAllWordsInPlay();
+        if (moveresult.Valid)
+            BtnColor = "btn-valid";
+        else BtnColor = "btn-invalid";
+        PlayMessage = moveresult.TotalScore.ToString() + " pts";
+
+    }
+    private void RackTileClick(RackTile rackTile)
+    //private Task RackTileClick(RackTile rackTile)
+    {
+
+       // Logger.LogInformation($"RackTileClick0 Parent Letter={rackTile.Letter} Text={rackTile.Text} LetterSelected ={rackTile.LetterSelected}");
+
+        //var x = rackTile.Letter;
+        rackTile.Text = string.Empty;
+
+        //return Task.CompletedTask;
+
+      //  Logger.LogInformation($"RackTileClick0 Parent Letter={rackTile.Letter} Text={rackTile.Text} LetterSelected ={rackTile.LetterSelected}");
+    }
+
+    void UndoSolution(Solution solution)
+    {
+        foreach (var tile in lastTilesInPlay)
+        {
+            boardManager.bagTile.GiveLetter(char.Parse(tile.Text));
+            tile.Text = string.Empty;
+            tile.Letter = string.Empty;
+        }
+        playerManager.CurrentPlayer.Score -= solution.w;
+        boardManager.ClearTileHighlights();
+    }
+
+    void LogRack(List<RackTile> tile)
+    {
+        string msg = "tile=";
+        foreach (RackTile t in tile)
+        {
+            msg += t.Text +t.Letter + t.LetterValue.ToString() + t.LetterSelected.ToString() + " " ;
+        }
+        gameLog.Log(msg);
+    }
+}

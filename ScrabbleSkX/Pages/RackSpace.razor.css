@@ -1,0 +1,42 @@
+﻿.tile-space {
+    display: inline-flex;
+    height: 2.5rem;
+    width: 2.5rem;
+    max-width: 2.5rem;
+    border: 1px solid black;
+    vertical-align: top;
+    justify-content: center;
+    align-items: center;
+    overflow: visible;
+    cursor: default;
+    user-select: none;
+}
+
+.tile-content {
+    text-align: center;
+    font-family: 'Open_Sans_Bold';
+    font-size: large;
+    font-weight: bolder;
+    max-width: 2rem;
+    position: relative;
+    left: -2px;
+}
+
+.tile-container-multiplier1, .tile-container-multiplier2, .tile-content-score {
+    font-size: xx-small;
+    position: absolute;
+    line-height: 100%;
+}
+
+.tile-content-score {
+    top: 1px;
+    right: 1px;
+}
+sup {
+    vertical-align: bottom;
+    font-size: xx-small;
+}
+sub {
+    vertical-align: bottom;
+    font-size: 10%;
+}

@@ -1,0 +1,115 @@
+﻿
+.tile-space {
+    display: inline-flex;
+    height: 1.8rem;
+    width: 1.8rem;
+    max-width: 1.8rem;
+    border: 1px solid black;
+    vertical-align: top;
+    justify-content: center;
+    align-items: center;
+    overflow: visible;
+    cursor: default;
+    user-select: none;
+}
+
+.tile-content {
+    text-align: center;
+    font-family: 'Open_Sans_Bold';
+    font-size:medium;
+    font-weight: bolder;
+    max-width: 1.6rem;
+    position: relative;
+    left: -2px;
+}
+
+    .tile-content.tile-last-move {
+        color: darkgoldenrod;
+    }
+
+    .tile-content.tile-valid {
+        color: dodgerblue
+    }
+
+.tile-container-multiplier1, .tile-container-multiplier2, .tile-content-score {
+    font-size: xx-small;
+    position: absolute;
+    line-height: 100%;
+}
+
+.tile-content-score {
+    top: 1px;
+    right: 1px;
+}
+
+.tile-worth {
+    text-align: center;
+    font-family: 'Open_Sans_Bold';
+    font-size: xx-small;
+    font-weight: bolder;
+    max-width: 1rem;
+    position: relative;
+    left: -2px;
+}
+
+.regular-letter {
+    color: azure;
+}
+
+.center-letter {
+    background-color: red;
+}
+
+.double-letter {
+    background-color: paleturquoise;
+}
+
+.tripple-letter {
+    background-color: rgb(51, 255, 51);
+    color: white;
+}
+
+.double-word {
+    background-color: lightpink;
+}
+
+.tripple-word {
+    background-color: #ff704d;
+    color: white;
+    display:;
+}
+
+.inplay-letter {
+    color: yellow;
+}
+
+.not-empty {
+    color: goldenrod;
+}
+
+.double-letter {
+    background-color: paleturquoise;
+}
+
+.tripple-letter {
+    background-color: forestgreen;
+    color: white;
+}
+
+.double-word {
+    background-color: lightpink;
+}
+
+.tripple-word {
+    background-color: red;
+    color: white;
+    display:;
+}
+.sup {
+    vertical-align:bottom;
+    font-size:xx-small;
+}
+sub {
+    vertical-align:bottom;
+    font-size:10%;
+}

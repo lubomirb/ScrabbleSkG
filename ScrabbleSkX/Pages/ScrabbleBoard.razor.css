@@ -1,0 +1,63 @@
+﻿.game {
+    text-align:center;
+    
+}
+
+    .game .game-element-container div {
+        display: inline-block;
+    }
+
+.message {
+    max-height: 8em;
+    min-height: 7em;
+    border: 2px solid black;
+    margin: 2rem 20%;
+    display: block;
+    overflow-y: scroll;
+}
+
+    .message p, .message h3 {
+        text-align: center;
+    }
+
+    .message h3 {
+        margin-top: 1.5rem;
+    }
+
+.grid-container {
+    display: inline-grid;
+    grid-template-columns: auto auto auto auto auto auto auto auto auto auto auto auto auto auto auto;
+    /*background-color: aqua;*/
+    padding: 1px;
+    align-content: end;
+   
+}
+
+.tile-row {
+    display: flex !important;
+}
+
+.player-tiles {
+    margin-top: 0.5rem;
+    display:inline-block;
+}
+
+.float-left {
+    float: left !important;
+}
+
+.float-right {
+    float: right !important;
+}
+
+.float-none {
+    float: none !important;
+}
+.stlpec {
+    float:left;
+    width:50%;
+}
+.stlpec2 {
+    float:left;
+    width:25%;
+}

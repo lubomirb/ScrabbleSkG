@@ -1,0 +1,51 @@
+﻿@inject ILogger<BoardSpace> Logger
+@using ScrabbleSkX;
+@using ScrabbleSkX.Data;
+@using ScrabbleSkX.Players;
+<div class="@BoardTile.TileSpaceClass()" @onclick=BoardTileClick>
+
+    @if (!string.IsNullOrEmpty(BoardTile.Text))
+    {
+        <div class="tile-content">@BoardTile.Text<sub>@BoardTile.LetterValue</sub></div>
+    }
+
+</div>
+
+@code {
+    [Parameter] public BoardTile BoardTile { get; set; }
+    [Parameter] public PlayerManager playerManager { get; set; }
+    [Parameter] public EventCallback<BoardTile> OnClickCallback { get; set; }
+
+    private async void BoardTileClick()
+    {
+        // Clicked on a tile that they have just put down so move it back to the rack.
+        if (BoardTile.TileInPlay)
+        {
+            foreach (RackTile t in playerManager.CurrentPlayer.Tiles)
+            {
+                if (string.IsNullOrEmpty(t.Text) && t.Letter == BoardTile.Letter)
+                {
+                    t.Text = BoardTile.Letter;
+                    BoardTile.OnLetterRemoved();
+                }
+            }
+        }
+        // All is good - handle placing the tile on the board from the rack.
+        if (string.IsNullOrEmpty(BoardTile.Letter))
+            foreach (RackTile t in playerManager.CurrentPlayer.Tiles)
+            {
+                if (t.LetterSelected)
+                {
+                    //Logger.LogInformation($"BoardTileClick0 Letter={t.Letter} Text={t.Text} LetterSelected={t.LetterSelected}");
+
+                    BoardTile.OnLetterPlaced(t.Letter, t.LetterValue);
+                    t.ClearDisplay();
+
+                   // Logger.LogInformation($"BoardTileClick1 Letter={t.Letter} Text={t.Text} LetterSelected ={ t.LetterSelected}");
+                }
+            }
+        await OnClickCallback.InvokeAsync(BoardTile);
+        StateHasChanged();
+    }
+
+}

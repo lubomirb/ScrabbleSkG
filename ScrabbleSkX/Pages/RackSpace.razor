@@ -1,0 +1,30 @@
+﻿@inject ILogger<RackSpace> Logger;
+@using ScrabbleSkX;
+@using ScrabbleSkX.Data;
+@using ScrabbleSkX.Players;
+<div class="tile-space" @onclick="RackTileClick">
+    <div class="tile-content">@RackTile.Text<sub>@RackTile.LetterValue</sub></div>
+</div>
+
+@code {
+    [Parameter] public RackTile RackTile { get; set; }
+    [Parameter] public PlayerManager playerManager { get; set; }
+    [Parameter] public EventCallback<RackTile> OnClickCallback { get; set; }
+
+
+    private async void RackTileClick()
+    {
+
+        //Logger.LogInformation($"RackTileClick0 Letter={RackTile.Letter} Text={RackTile.Text} LetterSelected ={ RackTile.LetterSelected}");
+
+        RackTile.LetterSelected = true;
+        RackTile.Text = string.Empty;
+        // RackTile.LetterValue = null;
+        //await Task.Delay(1000);
+        //StateHasChanged();
+        await OnClickCallback.InvokeAsync(RackTile);
+
+       // Logger.LogInformation($"RackTileClick1 Letter={RackTile.Letter} Text={RackTile.Text} LetterSelected ={ RackTile.LetterSelected}");
+    }
+
+}
