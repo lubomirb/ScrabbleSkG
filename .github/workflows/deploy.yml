@@ -24,7 +24,7 @@ jobs:
         dotnet-version: 9.0.x
 
     - name: Publish Blazor WASM
-      run: dotnet publish ScrabbleSkX.csproj -c Release -o build
+      run: dotnet publish ScrabbleSkX/ScrabbleSkX.csproj -c Release -o build
 
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
