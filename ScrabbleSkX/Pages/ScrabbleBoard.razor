@@ -1,6 +1,7 @@
 ﻿@page "/"
 @inject ILogger<ScrabbleBoard> Logger
 @inject HttpClient Http
+@inject ScrabbleSkX.Services.DictionaryService Dict
 @using ScrabbleSkX;
 @using ScrabbleSkX.Pages;
 @using ScrabbleSkX.Data;
@@ -168,10 +169,15 @@
 
         Static.toIntSet();
         trie = new Data.Trie();
-        var content = await ReadFileAsync(fileName: @"SK\dictionary\SK_2to5.txt");
+       
+        //var content = await ReadFileAsync(fileName: @"SK\dictionary\SK_2to5.txt");
+        //var content = await ReadFileAsync(fileName: @"SK\dictionary\SK_slovnik.txt");
 
+        //string[] words = content.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries);
 
-        string[] words = content.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries);
+        string[]? words;
+        words = await Dict.GetWordsAsync();
+
 
         foreach (string word in words)
         {
