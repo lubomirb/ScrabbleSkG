@@ -1,4 +1,4 @@
-namespace ScrabbleSkX.Log
+namespace ScrabbleSkX.Glog
 {
     // Simple game log to store messages
     public class GameLog
