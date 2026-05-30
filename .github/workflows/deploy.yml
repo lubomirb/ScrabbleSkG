@@ -1,8 +1,11 @@
-name: Deploy ScrabbleSkG to GitHub Pages
+name: Deploy Blazor WebAssembly to GitHub Pages
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "main" ]
   workflow_dispatch:
 
 permissions:
@@ -15,16 +18,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout
+    - name: Checkout repository
       uses: actions/checkout@v4
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 9.0.x
+        dotnet-version: 8.0.x
 
-    - name: Publish Blazor WASM
-      run: dotnet publish ScrabbleSkG.csproj -c Release -o build
+    - name: Publish .NET project
+      run: dotnet publish -c Release -o build
+
+    - name: Fix base href for GitHub Pages
+      run: |
+        sed -i 's|<base href="/" />|<base href="/ReadSlovnik/" />|' build/wwwroot/index.html
 
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
@@ -42,4 +49,3 @@ jobs:
     - name: Deploy to GitHub Pages
       id: deployment
       uses: actions/deploy-pages@v4
-
