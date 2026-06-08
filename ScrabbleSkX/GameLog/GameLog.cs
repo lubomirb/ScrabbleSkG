@@ -1,7 +1,7 @@
 namespace ScrabbleSkX.GameLog
 {
-    // Simple game log to store messages
-   
+    // Simple game log to store messages 
+ 
     public class GameLog
     {
         public Stack<string> messages { get; set; } = new Stack<string>();
