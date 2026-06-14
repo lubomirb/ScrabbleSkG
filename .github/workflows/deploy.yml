@@ -24,12 +24,21 @@ jobs:
         dotnet-version: 9.0.x
 
     - name: Publish Blazor WASM
-      run: dotnet publish ScrabbleSkX/ScrabbleSkX.csproj -c Release -o build
+      run: dotnet publish ScrabbleSkX/ScrabbleSkX.csproj -c Release -o publish
+
+    - name: Add .nojekyll
+      run: touch publish/wwwroot/.nojekyll
+
+    - name: Rewrite base href
+      uses: stevesandersonms/ghaction-rewrite-base-href@5b54862
+      with:
+        html_path: publish/wwwroot/index.html
+        base_href: /ScrabbleSkG/
 
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
-        path: build/wwwroot
+        path: publish/wwwroot
 
   deploy:
     needs: build
