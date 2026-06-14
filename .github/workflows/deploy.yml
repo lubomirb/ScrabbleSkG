@@ -34,7 +34,7 @@ jobs:
               
       with:
         html_path: publish/wwwroot/index.html
-        base_href: /ScrabbleSkG/
+        base_href: /ScrabbleSkX/
 
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
