@@ -2,6 +2,7 @@
 @inject ILogger<ScrabbleBoard> Logger
 @inject HttpClient Http
 @inject ScrabbleSkX.Services.DictionaryService Dict
+@inject ScrabbleSkX.Services.GameState GameState
 @using ScrabbleSkX;
 @using ScrabbleSkX.Pages;
 @using ScrabbleSkX.Data;
@@ -24,6 +25,42 @@
         {
             <GameLogger logmessage=@s></GameLogger>
         }
+    </div>
+}
+
+@if (ShowHelp)
+{
+    <div style="position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:1000;">
+        <div style="background:white; padding:1rem; max-width:800px; width:90%; border-radius:6px; position:relative;">
+            <button class="btn btn-sm btn-link" style="position:absolute; right:8px; top:8px;" @onclick="CloseHelp">Zavrieť</button>
+            <h3>Návod na hru</h3>
+            <p>Vitajte v hre Scrabble. Tu sú základné pravidlá a tipy, ktoré vám pomôžu začať:</p>
+
+            <h4>Základy</h4>
+            <ul>
+                <li>Tvorte slová horizontálne (vpravo) alebo vertikálne (nadol) tak, aby boli zmysluplné.</li>
+                <li>Na každom ťahu môžete položiť 1 alebo viac písmen z vášho stojanu (rack).</li>
+                <li>Ak použijete všetky písmená (7), získate bonus +50 bodov (bingo).</li>
+            </ul>
+
+            <h4>Skórovanie</h4>
+            <ul>
+                <li>Každé písmeno má bodovú hodnotu. Hodnoty nájdete v nastavení hry.</li>
+                <li>Speciálne polia na doske násobia body písmen (DL/TL) alebo celého slova (DW/TW).</li>
+            </ul>
+
+            <h4>Žolík</h4>
+            <ul>
+                <li>Žolík je zastúpený znakom '#'. Nemá žiadnu bodovú hodnotu a môže zastúpiť ľubovoľné písmeno.</li>
+            </ul>
+
+            <h4>Ovládanie</h4>
+            <ul>
+                <li>Tlačidlo "Play" potvrdí položené písmená.</li>
+                <li>Tlačidlo "Swap" vymení označené písmená za nové z vrecka (ak sú dostupné).</li>
+                <li>Tlačidlo "Hint" navrhne možné ťahy (vyžaduje povolený slovník).</li>
+            </ul>
+        </div>
     </div>
 }
 
@@ -80,10 +117,9 @@
         <button @onclick=Valid>Valid</button>
         <button @onclick=InValid>InValid</button>
         <button @onclick=NewGame>NewGame</button>
-        <!--
-        <button @onclick=Exit>Exit</button>
-        <button @onclick=Test>Test</button>
-        -->
+        
+        <button @onclick="() => ShowHelp = true">Návod na hru</button>
+       
 
     </div>
     <div>
@@ -151,33 +187,46 @@
     public string boardIni { get; set; } = string.Empty;
 
     public List<BoardTile> lastTilesInPlay = new List<BoardTile>();
+    public bool ShowHelp { get; set; } = false;
 
 
     protected override async Task OnInitializedAsync()
     {
+        // If we have previously initialized app state, restore it to avoid expensive reinitialization
+        if (GameState != null && GameState.Initialized)
+        {
+            gameLog = GameState.GameLog ?? new GameLog();
+            trie = GameState.Trie ?? new Data.Trie();
+            solverDictionary = GameState.SolverDictionary ?? new Solver.Dictionary(trie.root, trie.Count);
+
+            GamePlaying = GameState.GamePlaying;
+            SwapIsClicked = GameState.SwapIsClicked;
+            PlayMessage = GameState.PlayMessage ?? string.Empty;
+
+            statManager = GameState.StatManager ?? new StatManager();
+            tileBag = GameState.TileBag ?? new BagTile();
+            rackManager = GameState.RackManager ?? new RackManager(tileBag);
+            playerManager = GameState.PlayerManager ?? new PlayerManager(rackManager);
+
+            initialBoard = GameState.InitialBoard ?? string.Empty;
+            boardManager = GameState.BoardManager ?? new BoardManager(tileBag, statManager, playerManager);
+            boardIni = GameState.BoardIni ?? string.Empty;
+            solverBoard = GameState.SolverBoard ?? new Solver.Board(solverDictionary, boardIni);
+
+            wordValidator = GameState.WordValidator ?? new WordValidator(tileBag, playerManager, boardManager, solverDictionary);
+
+            return;
+        }
 
         int count = 0;
         //Logger.LogWarning("Vstup z OnInitializedAsync");
         gameLog = new GameLog();
 
-        //
-        //string skIni = await FileServices.ReadFileAsync("SK/SK1.ini");
-        //solverBag = new Solver.Bag(skIni);
-        // Solver.Bag publikovala iba staticku funkciu GetLetterValues
-        // v triede Solver.Board je nahradená triedou Solver.BagTiles 
-        //
-
         Static.toIntSet();
         trie = new Data.Trie();
-       
-        //var content = await ReadFileAsync(fileName: @"SK\dictionary\SK_2to5.txt");
-        //var content = await ReadFileAsync(fileName: @"SK\dictionary\SK_slovnik.txt");
-
-        //string[] words = content.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries);
 
         string[]? words;
         words = await Dict.GetWordsAsync();
-
 
         foreach (string word in words)
         {
@@ -187,9 +236,8 @@
 
         solverRack = new Solver.Rack();
 
-
         solverDictionary = new Solver.Dictionary(trie.root, trie.Count);
-       
+
         GamePlaying = true;
 
         SwapIsClicked = false;
@@ -212,7 +260,26 @@
 
         wordValidator = new WordValidator(tileBag, playerManager, boardManager, solverDictionary);
 
-        // Logger.LogWarning("Vystup z OnInitializedAsync");
+        // Persist initialized state so navigating away and back reuses it
+        if (GameState != null)
+        {
+            GameState.GameLog = gameLog;
+            GameState.Trie = trie;
+            GameState.SolverDictionary = solverDictionary;
+            GameState.GamePlaying = GamePlaying;
+            GameState.SwapIsClicked = SwapIsClicked;
+            GameState.PlayMessage = PlayMessage;
+            GameState.StatManager = statManager;
+            GameState.TileBag = tileBag;
+            GameState.RackManager = rackManager;
+            GameState.PlayerManager = playerManager;
+            GameState.InitialBoard = initialBoard;
+            GameState.BoardManager = boardManager;
+            GameState.BoardIni = boardIni;
+            GameState.SolverBoard = solverBoard;
+            GameState.WordValidator = wordValidator;
+            GameState.Initialized = true;
+        }
     }
 
     static async Task<string> ReadStreamAsync(string filePath)
@@ -243,6 +310,11 @@
     private void ReRender()
     {
         StateHasChanged();
+    }
+
+    private void CloseHelp()
+    {
+        ShowHelp = false;
     }
 
     private void Valid()
@@ -350,6 +422,7 @@
         PlayerTwoSolution();
         playerManager.SwapCurrentPlayer();
     }
+  
 
     private void Play()
     {
